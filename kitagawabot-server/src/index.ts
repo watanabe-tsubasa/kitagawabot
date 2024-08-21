@@ -5,10 +5,13 @@ import {
 import { Hono } from 'hono'
 import HmacSHA256 from "crypto-js/hmac-sha256";
 import Base64 from "crypto-js/enc-base64";
+import { gptResponse } from './gpt';
 
 type Bindings = {
   CHANNEL_ACCESS_TOKEN: string,
   CHANNEL_SECRET: string,
+  WEBHOOK_ID: string,
+  OPENAI_API_KEY: string,
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -21,6 +24,8 @@ app.post('/webhook', async (c) => {
   const body = await c.req.text() // JSONではなくテキストで取得
   const channelAccessToken = c.env.CHANNEL_ACCESS_TOKEN || process.env.CHANNEL_ACCESS_TOKEN || ''
   const channelSecret = c.env.CHANNEL_SECRET || process.env.CHANNEL_SECRET || ''
+  const webhookUrl = c.env.WEBHOOK_ID || process.env.WEBHOOK_ID || ''
+  const openaiAPIKey = c.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY || ''
 
   // シグネチャの取得
   const signature = c.req.header('x-line-signature')
@@ -37,7 +42,7 @@ app.post('/webhook', async (c) => {
   }
 
   const events = JSON.parse(body).events
-  const promises = events.map((event: webhook.Event) => handleEvent(event, channelAccessToken))
+  const promises = events.map((event: webhook.Event) => handleEvent(event, channelAccessToken, webhookUrl, openaiAPIKey))
   await Promise.all(promises)
 
   return c.text('OK')
@@ -46,10 +51,11 @@ app.post('/webhook', async (c) => {
 const handleEvent = async (
   event: webhook.Event,
   accessToken: string,
+  webhookUrl: string,
+  openaiAPIKey: string,
 ) => {
   if (event.type !== 'message' || event.message.type !== 'text') return;
   if (!event.replyToken) return;
-  const { text } = event.message;
   fetch('https://api.line.me/v2/bot/chat/loading/start', {
     method: 'POST',
     headers: {
@@ -58,11 +64,23 @@ const handleEvent = async (
     },
     body: JSON.stringify({"chatId": event.source?.userId})
   })
+  
+  // const { text } = event.message;
+  // const res = await gptResponse(text, openaiAPIKey);
 
+  const makeFetcher = await fetch(`https://hook.eu2.make.com/${webhookUrl}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(event)
+  });
+  const res = await makeFetcher.text();
+  console.log(res);
   const responseBody: messagingApi.ReplyMessageRequest = {
     replyToken: event.replyToken,
     messages: [
-      {'type': 'text', 'text': text}
+      {'type': 'text', 'text': res}
     ] 
   }
   
