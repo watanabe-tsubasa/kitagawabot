@@ -2,7 +2,7 @@ import {
   messagingApi,
   webhook,
 } from '@line/bot-sdk'
-import { Hono } from 'hono'
+import { ExecutionContext, Hono } from 'hono'
 import HmacSHA256 from "crypto-js/hmac-sha256";
 import Base64 from "crypto-js/enc-base64";
 import { gptResponse } from './gpt';
@@ -42,7 +42,7 @@ app.post('/webhook', async (c) => {
   }
 
   const events = JSON.parse(body).events
-  const promises = events.map((event: webhook.Event) => handleEvent(event, channelAccessToken, webhookUrl, openaiAPIKey))
+  const promises = events.map((event: webhook.Event) => handleEvent(event, channelAccessToken, webhookUrl, openaiAPIKey, c.executionCtx))
   await Promise.all(promises)
 
   return c.text('OK')
@@ -53,6 +53,7 @@ const handleEvent = async (
   accessToken: string,
   webhookUrl: string,
   openaiAPIKey: string,
+  ctx: ExecutionContext
 ) => {
   if (event.type !== 'message' || event.message.type !== 'text') return;
   if (!event.replyToken) return;
@@ -67,31 +68,35 @@ const handleEvent = async (
   
   // const { text } = event.message;
   // const res = await gptResponse(text, openaiAPIKey);
-
-  const makeFetcher = await fetch(`https://hook.eu2.make.com/${webhookUrl}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(event)
-  });
-  const res = await makeFetcher.text();
-  console.log(res);
-  const responseBody: messagingApi.ReplyMessageRequest = {
-    replyToken: event.replyToken,
-    messages: [
-      {'type': 'text', 'text': res}
-    ] 
-  }
-  
-  return fetch('https://api.line.me/v2/bot/message/reply', {
-    method: 'POST',
-    headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(responseBody)
-  })
+  ctx.waitUntil(
+    (async () => {
+      const makeFetcher = await fetch(`https://hook.eu2.make.com/${webhookUrl}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(event)
+      });
+      const res = await makeFetcher.text();
+      console.log(res);
+      if (!event.replyToken) return;
+      const responseBody: messagingApi.ReplyMessageRequest = {
+        replyToken: event.replyToken,
+        messages: [
+          {'type': 'text', 'text': res},
+        ] 
+      }
+      
+      return fetch('https://api.line.me/v2/bot/message/reply', {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(responseBody)
+      })
+    })()
+  )
 }
 
 export default app
