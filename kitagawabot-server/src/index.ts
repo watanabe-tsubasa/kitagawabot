@@ -6,6 +6,7 @@ import { ExecutionContext, Hono } from 'hono'
 import HmacSHA256 from "crypto-js/hmac-sha256";
 import Base64 from "crypto-js/enc-base64";
 import { gptResponse } from './gpt';
+import { json } from 'stream/consumers';
 
 type Bindings = {
   CHANNEL_ACCESS_TOKEN: string,
@@ -79,12 +80,15 @@ const handleEvent = async (
       });
       const res = await makeFetcher.text();
       console.log(res);
+      const messages = JSON.parse(res) as messagingApi.Message[];
       if (!event.replyToken) return;
       const responseBody: messagingApi.ReplyMessageRequest = {
         replyToken: event.replyToken,
-        messages: [
-          {'type': 'text', 'text': res},
-        ] 
+        messages :messages
+        // messages: [
+        //   {'type': 'text', 'text': res},
+        //   {'type': 'text', 'text': res},
+        // ] 
       }
       
       return fetch('https://api.line.me/v2/bot/message/reply', {
