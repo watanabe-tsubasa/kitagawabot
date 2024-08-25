@@ -6,7 +6,6 @@ import { ExecutionContext, Hono } from 'hono'
 import HmacSHA256 from "crypto-js/hmac-sha256";
 import Base64 from "crypto-js/enc-base64";
 import { gptResponse } from './gpt';
-import { json } from 'stream/consumers';
 
 type Bindings = {
   CHANNEL_ACCESS_TOKEN: string,
